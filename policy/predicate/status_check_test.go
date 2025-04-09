@@ -730,7 +730,7 @@ func TestHasStatusCheck(t *testing.T) {
 	runStatusCheckTestCase(t, regexTestCases)
 }
 
-func TestjoinElementsWithOr(t *testing.T) {
+func TestJoinElementsWithOr(t *testing.T) {
 	testCases := []struct {
 		name     string
 		input    []string
