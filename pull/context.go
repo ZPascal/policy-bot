@@ -132,7 +132,7 @@ type Context interface {
 	// LatestRepoStatuses returns a map of commit status names to the latest result
 	LatestRepoStatuses() (map[string]*github.RepoStatus, error)
 
-	// LatestStaLatestCheckStatusestuses returns a map of status check names to the latest result
+	// LatestCheckStatuses returns a map of status check names to the latest result
 	LatestCheckStatuses() (map[string]*github.CheckRun, error)
 
 	// LatestWorkflowRuns returns the latest GitHub Actions workflow runs for

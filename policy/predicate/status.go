@@ -19,6 +19,7 @@ import (
 
 	"github.com/palantir/policy-bot/policy/common"
 	"github.com/palantir/policy-bot/pull"
+	"github.com/pkg/errors"
 )
 
 // HasStatus checks that the specified statuses have a completed status with configurable conclusions.
@@ -43,9 +44,10 @@ func (pred HasStatus) Evaluate(ctx context.Context, prctx pull.Context) (*common
 	var checks []common.Regexp
 	for _, status := range pred.Statuses {
 		check, err := common.NewRegexp(status)
-		if err == nil {
-			checks = append(checks, check)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create regexp for status %q", status)
 		}
+		checks = append(checks, check)
 	}
 	return HasStatusCheck{Checks: checks, Conclusions: pred.Conclusions, noRegex: true}.Evaluate(ctx, prctx)
 }

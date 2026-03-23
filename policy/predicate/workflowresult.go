@@ -19,6 +19,7 @@ import (
 
 	"github.com/palantir/policy-bot/policy/common"
 	"github.com/palantir/policy-bot/pull"
+	"github.com/pkg/errors"
 )
 
 // HasWorkflowResult checks that the specified workflow has a configurable conclusion.
@@ -42,10 +43,11 @@ func (pred HasWorkflowResult) Evaluate(ctx context.Context, prctx pull.Context) 
 	// Convert strings into a regex object to comply with function signature
 	var workflows []common.Regexp
 	for _, workflow := range pred.Workflows {
-		escaped_workflow, err := common.NewRegexp(workflow)
-		if err == nil {
-			workflows = append(workflows, escaped_workflow)
+		r, err := common.NewRegexp(workflow)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create regexp for workflow %q", workflow)
 		}
+		workflows = append(workflows, r)
 	}
 	return HasWorkflow{Workflows: workflows, Conclusions: pred.Conclusions, noRegex: true}.Evaluate(ctx, prctx)
 }

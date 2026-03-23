@@ -782,6 +782,10 @@ func (ghc *GitHubContext) Teams() (map[string]Permission, error) {
 }
 
 func (ghc *GitHubContext) LatestRepoStatuses() (map[string]*github.RepoStatus, error) {
+	if ghc.repoStatuses != nil {
+		return ghc.repoStatuses, nil
+	}
+
 	opt := &github.ListOptions{
 		PerPage: 100,
 	}
@@ -805,6 +809,10 @@ func (ghc *GitHubContext) LatestRepoStatuses() (map[string]*github.RepoStatus, e
 }
 
 func (ghc *GitHubContext) LatestCheckStatuses() (map[string]*github.CheckRun, error) {
+	if ghc.checkStatuses != nil {
+		return ghc.checkStatuses, nil
+	}
+
 	opt := &github.ListCheckRunsOptions{
 		ListOptions: github.ListOptions{
 			PerPage: 100,
@@ -888,10 +896,15 @@ func (ghc *GitHubContext) LatestWorkflowRuns() (map[string][]*github.WorkflowRun
 		for _, run := range runs.WorkflowRuns {
 			eventName := run.GetEvent()
 
-			previousRuns := runsWithDate[*run.Path]
+			path := run.GetPath()
+			if path == "" {
+				continue
+			}
+
+			previousRuns := runsWithDate[path]
 			if previousRuns == nil {
 				previousRuns = make(map[string]*github.WorkflowRun)
-				runsWithDate[*run.Path] = previousRuns
+				runsWithDate[path] = previousRuns
 			}
 
 			previousRun := previousRuns[eventName]

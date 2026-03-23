@@ -43,7 +43,7 @@ func NewHasStatusCheck(checks []common.Regexp, statuses []string, conclusions []
 	}
 }
 
-var _ Predicate = HasStatus{}
+var _ Predicate = HasStatusCheck{}
 
 func (pred HasStatusCheck) Evaluate(ctx context.Context, prctx pull.Context) (*common.PredicateResult, error) {
 	allowedConclusions := pred.Conclusions
@@ -65,41 +65,43 @@ func (pred HasStatusCheck) Evaluate(ctx context.Context, prctx pull.Context) (*c
 
 	checkStatuses, err := prctx.LatestCheckStatuses()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to list commit statuses")
+		return nil, errors.Wrap(err, "failed to list check run statuses")
 	}
 
 	repoStatuses, err := prctx.LatestRepoStatuses()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to list commit statuses")
+		return nil, errors.Wrap(err, "failed to list repo commit statuses")
 	}
 
 	var missingResults = make(map[string]string)
 	var failingStatuses = make(map[string]string)
 	var allChecks = make(map[string]string)
+	sortedCheckKeys := slices.Sorted(maps.Keys(checkStatuses))
+	sortedRepoKeys := slices.Sorted(maps.Keys(repoStatuses))
 	for _, check := range pred.Checks {
 		matched := false
-		check_to_use := check
+		checkMatcher := check
 		if pred.noRegex {
-			check_to_use, err = common.NewRegexp(fmt.Sprintf("^%s$", regexp.QuoteMeta(check.String())))
+			checkMatcher, err = common.NewRegexp(fmt.Sprintf("^%s$", regexp.QuoteMeta(check.String())))
 			if err != nil {
-				return nil, errors.Wrapf(err, "failed to create regexp for workflow %s", check.String())
+				return nil, errors.Wrapf(err, "failed to create regexp for check %s", check.String())
 			}
 		}
-		for _, checkResultName := range slices.Sorted(maps.Keys(checkStatuses)) {
-			if check_to_use.Matches(checkResultName) {
+		for _, checkResultName := range sortedCheckKeys {
+			if checkMatcher.Matches(checkResultName) {
 				matched = true
 				allChecks[checkResultName] = checkResultName
 				checkResult := checkStatuses[checkResultName]
-				isValidStatus := slices.Contains(allowedStatuses, *checkResult.Status)
+				isValidStatus := checkResult.Status != nil && slices.Contains(allowedStatuses, *checkResult.Status)
 				isValidConclusion := checkResult.Conclusion != nil && slices.Contains(allowedConclusions, *checkResult.Conclusion)
-				if (checkResult.Status == nil || !isValidStatus) ||
-					(*checkResult.Status == "completed" && !isValidConclusion) {
+				if !isValidStatus ||
+					(checkResult.Status != nil && *checkResult.Status == "completed" && !isValidConclusion) {
 					failingStatuses[checkResultName] = checkResultName
 				}
 			}
 		}
-		for _, repoStatusName := range slices.Sorted(maps.Keys(repoStatuses)) {
-			if check_to_use.Matches(repoStatusName) {
+		for _, repoStatusName := range sortedRepoKeys {
+			if checkMatcher.Matches(repoStatusName) {
 				matched = true
 				allChecks[repoStatusName] = repoStatusName
 				repoStatusResult := repoStatuses[repoStatusName]
@@ -132,8 +134,14 @@ func (pred HasStatusCheck) Evaluate(ctx context.Context, prctx pull.Context) (*c
 	}
 
 	if len(failingStatuses) > 0 {
-		predicateResult.Values = slices.Sorted(maps.Keys(failingStatuses))
-		predicateResult.Description = fmt.Sprintf("One or more status checks or repo statuses have not concluded with %s: %s", joinElementsWithOr(allowedConclusions), failingStatuses)
+		failingStatusesList := slices.Sorted(maps.Keys(failingStatuses))
+		predicateResult.Values = failingStatusesList
+		predicateResult.Description = fmt.Sprintf(
+			"One or more status checks or repo statuses have currently not status %s and/or conclusion(in case status is completed) %s: %s",
+			joinElementsWithOr(allowedStatuses),
+			joinElementsWithOr(allowedConclusions),
+			failingStatusesList,
+		)
 		predicateResult.Satisfied = false
 		return &predicateResult, nil
 	}

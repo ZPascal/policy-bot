@@ -65,27 +65,28 @@ func (pred HasWorkflow) Evaluate(ctx context.Context, prctx pull.Context) (*comm
 	}
 
 	var missingResults []string
-	var failingWorkflows []string
-	var allWorkflows []string
+	failingWorkflows := make(map[string]string)
+	allWorkflows := make(map[string]string)
+	sortedRunKeys := slices.Sorted(maps.Keys(workflowRuns))
 	for _, workflow := range pred.Workflows {
 		matched := false
-		workflow_to_use := workflow
+		workflowMatcher := workflow
 		if pred.noRegex {
-			workflow_to_use, err = common.NewRegexp(fmt.Sprintf("^%s$", regexp.QuoteMeta(workflow.String())))
+			workflowMatcher, err = common.NewRegexp(fmt.Sprintf("^%s$", regexp.QuoteMeta(workflow.String())))
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to create regexp for workflow %s", workflow.String())
 			}
 		}
-		for _, name := range slices.Sorted(maps.Keys(workflowRuns)) {
-			if workflow_to_use.Matches(name) {
+		for _, name := range sortedRunKeys {
+			if workflowMatcher.Matches(name) {
 				matched = true
-				allWorkflows = append(allWorkflows, name)
+				allWorkflows[name] = name
 				for _, workflowResult := range workflowRuns[name] {
 					isStatusAllowed := workflowResult.Status != nil && slices.Contains(allowedStatuses, *workflowResult.Status)
 					isStatusCompletedAllowed := workflowResult.Status != nil && *workflowResult.Status == "completed" && slices.Contains(allowedStatuses, "completed")
 					isConclusionAllowed := workflowResult.Conclusion != nil && slices.Contains(allowedConclusions, *workflowResult.Conclusion)
 					if !isStatusAllowed || (isStatusCompletedAllowed && !isConclusionAllowed) {
-						failingWorkflows = append(failingWorkflows, name)
+						failingWorkflows[name] = name
 					}
 				}
 			}
@@ -95,39 +96,39 @@ func (pred HasWorkflow) Evaluate(ctx context.Context, prctx pull.Context) (*comm
 		}
 	}
 
+	allWorkflowsList := slices.Sorted(maps.Keys(allWorkflows))
 	predicateResult := common.PredicateResult{
 		ValuePhrase: "workflow results",
 		ConditionPhrase: fmt.Sprintf(
 			"exist and have statuses %s and have conclusion(in case status is completed) %s: %s",
 			joinElementsWithOr(allowedStatuses),
 			joinElementsWithOr(allowedConclusions),
-			allWorkflows,
+			allWorkflowsList,
 		),
 	}
 
 	if len(missingResults) > 0 {
-		predicateResult.Values = missingResults
 		slices.Sort(missingResults)
+		predicateResult.Values = missingResults
 		predicateResult.Description = fmt.Sprintf("One or more workflow runs are missing: %s", predicateResult.Values)
 		predicateResult.Satisfied = false
 		return &predicateResult, nil
 	}
 
 	if len(failingWorkflows) > 0 {
-		predicateResult.Values = failingWorkflows
-		slices.Sort(failingWorkflows)
+		failingWorkflowsList := slices.Sorted(maps.Keys(failingWorkflows))
+		predicateResult.Values = failingWorkflowsList
 		predicateResult.Description = fmt.Sprintf(
 			"One or more workflow runs have currently not status %s and/or conclusion(in case status is completed) %s: %s",
 			joinElementsWithOr(allowedStatuses),
 			joinElementsWithOr(allowedConclusions),
-			failingWorkflows,
+			failingWorkflowsList,
 		)
 		predicateResult.Satisfied = false
 		return &predicateResult, nil
 	}
 
-	predicateResult.Values = allWorkflows
-	slices.Sort(allWorkflows)
+	predicateResult.Values = allWorkflowsList
 	predicateResult.Satisfied = true
 
 	return &predicateResult, nil
